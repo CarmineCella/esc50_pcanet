@@ -88,26 +88,17 @@ def mel_scat(y, sr, hop_lengths, channels, joint=False, fmin=32.7, fmax=22050,
         b = cq1[i, :]
         cq2 = mel_gram(y=b, hop_length=hop_lengths[1], fft_size=fft_size,
                        mel_matrix=mmat2) / fft_size
-        if joint == True:
-            for j in range(cq2.shape[1]):
-                buff = np.zeros(fft_size)
-                buff[:cq2.shape[0]] = cq2[:, j]
-                magj = np.abs(np.fft.rfft(buff, fft_size))
-                cq2j = np.dot(mmat2, magj)
-                cq2[:, j] = cq2j[:cq2.shape[0]]
-
         cq2 = cq2[mask[i], :]
-        print (cq2.shape)
         scat.append(cq2)
 
     ratio = int(np.ceil(cq1.shape[1] / scat[0].shape[1]))
     cq1ds = cq1[:, ::ratio]
     scat = np.vstack(scat)
     scat = np.vstack((scat, cq1ds))
-    return scat, cq1
+    return scat
 
 if __name__ == '__main__':
     import librosa
-    y, sr = librosa.core.load("french_bird_first_half.wav", sr=44100)
-    s, cq1 = mel_scat(y=y, sr=sr, hop_lengths=(16, 4), channels=(40, 2),
-                 joint=True, fmin=32.7, fmax=8000, fft_size=1024)
+    y, sr = librosa.core.load("french_bird.wav", sr=44100)
+    s = mel_scat(y=y, sr=sr, hop_lengths=(64, 8), channels=(80, 12),
+                 fmin=32.7, fmax=16000, fft_size=1024)
