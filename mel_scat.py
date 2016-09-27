@@ -49,7 +49,7 @@ def mel_matrix(num_mel_bands=40, freq_min=32.7, freq_max=16000,
         melmat[imelband, right_slope] = (
             (upper - freqs[right_slope]) / (upper - center)
         )
-
+    
     return melmat, (center_frequencies_mel, freqs)
 
 
@@ -68,7 +68,7 @@ def mel_gram(y, hop_length, fft_size, mel_matrix):
     return s
 
 
-def mel_scat(y, sr, hop_lengths, channels, joint=False, fmin=32.7, fmax=22050,
+def mel_scat(y, sr, hop_lengths, channels, fmin=32.7, fmax=22050,
              fft_size=1024):
     mmat1, (c1, f) = mel_matrix(num_mel_bands=channels[0], freq_min=fmin,
                                 freq_max=fmax,
@@ -99,6 +99,6 @@ def mel_scat(y, sr, hop_lengths, channels, joint=False, fmin=32.7, fmax=22050,
 
 if __name__ == '__main__':
     import librosa
-    y, sr = librosa.core.load("french_bird.wav", sr=44100)
-    s = mel_scat(y=y, sr=sr, hop_lengths=(64, 8), channels=(80, 12),
+    y, sr = librosa.core.load("../../datasets/ESC-50-toy/101 - Dog/4-207124-A.wav")
+    s = mel_scat(y=y, sr=sr, hop_lengths=(64, 8), channels=(84, 12),
                  fmin=32.7, fmax=16000, fft_size=1024)
