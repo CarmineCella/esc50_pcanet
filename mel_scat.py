@@ -100,5 +100,5 @@ def mel_scat(y, sr, hop_lengths, channels, fmin=32.7, fmax=22050,
 if __name__ == '__main__':
     import librosa
     y, sr = librosa.core.load("../../datasets/ESC-50-toy/101 - Dog/4-207124-A.wav")
-    s, m = mel_scat(y=y, sr=sr, hop_lengths=(64, 8), channels=(84, 12),
+    s, m = mel_scat(y=y, sr=sr, hop_lengths=(16, 8), channels=(84, 12),
                  fmin=32.7, fmax=16000, fft_size=1024)
