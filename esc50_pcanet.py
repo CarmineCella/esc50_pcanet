@@ -27,15 +27,15 @@ log_features = True
 log_eps = 0.01
 nfolds = 50
 split = 0.25
-pca_components = 50
+pca_components = 40
 pca_time_width = 1
-pca_stride = 5
+pca_stride = 10
 connections = 'pca_net'
 
 params = {'features':'mel_scat',  
-          'channels': (84,12), 'hops': (64,4),
+          'channels': (84,12), 'hops': (128,4),
           'fmin':32.7, 'fmax':18000,
-          'nclasses': 2, 'max_sample_size':110250}
+          'nclasses': 50, 'max_sample_size':110250}
  
 def get_features (file, features, channels, hops, fmin, fmax, max_sample_size):
     y = np.zeros(max_sample_size);   
