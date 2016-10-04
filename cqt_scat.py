@@ -13,7 +13,6 @@ def cqt_scat(y, sr, hops, bins, fmin=32.7):
     mask = freqs1[:,np.newaxis] > freqs2
     
     frames2 = int(np.ceil (C.shape[1] / hops[1])) + 1
-    print (frames2)
     scat = np.zeros ((mask.sum() + C.shape[0], frames2))
     layer2_dict = dict()
     scat_dict = {1: layer2_dict}
@@ -23,7 +22,6 @@ def cqt_scat(y, sr, hops, bins, fmin=32.7):
                                       n_bins=bins[1], bins_per_octave=12,
                                       fmin=fmin, real=False))
         c1 = c1[m,:]
-        print (c1.shape)
         sys.stdout.flush()
         scat[ctn:ctn+c1.shape[0]] = c1
         ctn += c1.shape[0]
@@ -36,7 +34,9 @@ def cqt_scat(y, sr, hops, bins, fmin=32.7):
     return scat, scat_dict
 
 if __name__ == '__main__':
-    y, sr = librosa.load('1-26806-A.wav')    
+    y, sr = librosa.load('test1_22050.wav')    
     s, d = cqt_scat(y, sr, (16, 8), (48, 4))
     print (s.shape)
-    
+    plt.figure ()
+    plt.imshow (s, aspect='auto')
+    plt.show ()

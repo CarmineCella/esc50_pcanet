@@ -21,23 +21,27 @@ import librosa
 import numpy as np
 import os.path
 from mel_scat import mel_scat
+from cqt_scat import cqt_scat
+from flex_scat import flex_scat
 
 db_location = '../../datasets/ESC-50-master'
 log_features = True
 log_eps = 0.01
 nfolds = 50
 split = 0.25
-pca_components = 40
+pca_components = 50
 pca_time_width = 1
 pca_stride = 10
 connections = 'pca_net'
 
-params = {'features':'mel_scat',  
+params = {'features':'flex_scat',  
           'channels': (84,12), 'hops': (128,4),
-          'fmin':32.7, 'fmax':18000,
+          'fmin':32.7, 'fmax':11000,
+          'alphas':(6,6),'Qs':(12,12),
           'nclasses': 50, 'max_sample_size':110250}
  
-def get_features (file, features, channels, hops, fmin, fmax, max_sample_size):
+def get_features (file, features, channels, hops, fmin, fmax, alphas, Qs,
+                  max_sample_size):
     y = np.zeros(max_sample_size);   
     yt, sr = librosa.core.load (file)
     
@@ -54,9 +58,17 @@ def get_features (file, features, channels, hops, fmin, fmax, max_sample_size):
         s, m = mel_scat(y=y, sr=sr, hop_lengths=hops, channels=channels, 
                         fmin=fmin, fmax=fmax, fft_size=1024)
         return s
+    elif features == 'cqt_scat':
+        s, m = cqt_scat(y=y, sr=sr, hops=hops, bins=channels, fmin=fmin)
+        return s        
+    elif features == 'flex_scat':
+        s = flex_scat(y=y, sr=sr, alphas=alphas, Qs=Qs,
+                        hop_lengths=hops, channels=channels, 
+                        fmin=fmin, fmax=fmax, fft_size=1024)
+        return s
     else:
         raise ValueError('Unkonwn features requested')
-
+50
 cachedir = os.path.expanduser('~/esc50_pcanet_joblib')
 memory = joblib.Memory(cachedir=cachedir, verbose=1)
 cached_get_features = memory.cache(get_features)
@@ -67,6 +79,8 @@ def compute_features (root_path, params):
     hops = params['hops']
     fmin = params['fmin']
     fmax = params['fmax']
+    alphas = params['alphas']
+    Qs = params['Qs']
     max_sample_size = params['max_sample_size']
         
     y_data = []
@@ -79,7 +93,8 @@ def compute_features (root_path, params):
             print ("class: " + root.split("/")[-1])
             for item in waves:
                 l = cached_get_features(os.path.join(root, item), features, 
-                                        channels, hops, fmin, fmax, max_sample_size)
+                                        channels, hops, fmin, fmax,
+                                        alphas, Qs, max_sample_size)
                 X_list.append([l])
                 y_data.append (classes)
 

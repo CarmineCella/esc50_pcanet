@@ -99,6 +99,10 @@ def mel_scat(y, sr, hop_lengths, channels, fmin=32.7, fmax=22050,
 
 if __name__ == '__main__':
     import librosa
-    y, sr = librosa.core.load("../../datasets/ESC-50-toy/101 - Dog/4-207124-A.wav")
+    y, sr = librosa.core.load("test1_22050.wav")
     s, m = mel_scat(y=y, sr=sr, hop_lengths=(32, 2), channels=(84, 12),
                  fmin=32.7, fmax=18000, fft_size=1024)
+    import matplotlib.pyplot as plt
+    plt.figure ()
+    plt.imshow (s, aspect='auto')
+    plt.show ()
