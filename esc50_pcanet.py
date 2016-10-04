@@ -134,6 +134,7 @@ if __name__ == "__main__":
         os.sys.stdout.flush()
         from sklearn.decomposition import PCA
         from sklearn.feature_extraction.image import extract_patches
+        print (X_data.shape)
         patches = extract_patches(X_data, 
                                   (1, pca_freq_width, pca_time_width), 
                                   (1, pca_freq_stride, pca_time_stride))
@@ -146,9 +147,21 @@ if __name__ == "__main__":
         pca = PCA(n_components=pca_components)
         patches_transformed = pca.fit_transform(patches_reshaped)
         patches_transformed.shape = X_data.shape[0], -1, patches_transformed.shape[1]
-        X, y = (patches_transformed.reshape(X_data.shape[0], -1)), y_data.ravel()
         
-        
+        print (patches_transformed.shape)
+        patches2 = np.abs (extract_patches(patches_transformed,
+                                  (1, pca_freq_width, pca_time_width), 
+                                  (1, pca_freq_stride, pca_time_stride)))
+        patches_reshaped2 = patches2.reshape(np.prod(patches2.shape[:3]),
+                                           np.prod(patches2.shape[3:]))
+        #U, s, V = np.linalg.svd(patches_reshaped) 
+        #V_cut = V[:pca_components, :]
+        #patches_transformed = V_cut.dot(patches_reshaped.T).T                               
+        #patches_transformed = patches_reshaped.dot (np.conj (V_cut.T))                               
+        pca2 = PCA(n_components=pca_components/2)
+        patches_transformed2 = pca2.fit_transform(patches_reshaped2)
+        patches_transformed2.shape = patches_transformed.shape[0], -1, patches_transformed2.shape[1]
+        X, y = np.abs(patches_transformed2.reshape(patches_transformed.shape[0], -1)), y_data.ravel()
         
     elif connections == 'none':
         X, y = X_data.reshape(X_data.shape[0], -1), y_data.ravel()
@@ -163,7 +176,7 @@ if __name__ == "__main__":
     from sklearn.pipeline import make_pipeline
     from sklearn.cross_validation import cross_val_score
     from sklearn.svm import SVC
-    from sklearn.ensemble import RandomForestClassifier
+    #from sklearn.ensemble import RandomForestClassifier
 
     pipeline = make_pipeline(SVC(C=1., kernel='linear'))
     #pipeline = make_pipeline(RandomForestClassifier(n_estimators=300))
@@ -178,4 +191,12 @@ if __name__ == "__main__":
         plt.imshow (pca.components_[i].reshape(pca_freq_width, pca_time_width), aspect='auto')
         
     plt.show (False)
+
+    
+    plt.figure ()    
+    for i in range (int(pca_components/2)):
+        plt.subplot (np.sqrt(pca_components) + 1, np.sqrt (pca_components) + 1, i + 1)        
+        plt.imshow (pca2.components_[i].reshape(pca_freq_width, pca_time_width), aspect='auto')
+        plt.show (False)
+    
 #eof
