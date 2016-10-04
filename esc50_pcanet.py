@@ -30,15 +30,17 @@ log_eps = 0.01
 nfolds = 50
 split = 0.25
 pca_components = 50
-pca_time_width = 1
-pca_stride = 10
+pca_time_width = 9
+pca_time_stride = 2
+pca_freq_width = 9
+pca_freq_stride = 4
 connections = 'pca_net'
 
-params = {'features':'flex_scat',  
-          'channels': (84,12), 'hops': (128,4),
+params = {'features':'cqt',  
+          'channels': (84,12), 'hops': (1024,4),
           'fmin':32.7, 'fmax':11000,
-          'alphas':(6,6),'Qs':(12,12),
-          'nclasses': 50, 'max_sample_size':110250}
+          'alphas':(6,6),'Qs':(12,12), # only used for flex scattering
+          'nclasses': 5, 'max_sample_size':110250}
  
 def get_features (file, features, channels, hops, fmin, fmax, alphas, Qs,
                   max_sample_size):
@@ -68,7 +70,7 @@ def get_features (file, features, channels, hops, fmin, fmax, alphas, Qs,
         return s
     else:
         raise ValueError('Unkonwn features requested')
-50
+
 cachedir = os.path.expanduser('~/esc50_pcanet_joblib')
 memory = joblib.Memory(cachedir=cachedir, verbose=1)
 cached_get_features = memory.cache(get_features)
@@ -118,29 +120,43 @@ if __name__ == "__main__":
     print ("")    
 
     print ("computing features...")
+    os.sys.stdout.flush()
     X_data, y_data = compute_features (db_location, params)
+
 
     if log_features == True:
         print ("computing log data...")
+        os.sys.stdout.flush()
         X_data = np.log (log_eps + X_data)
 
     if connections == 'pca_net':
         print ('computing PCA connections...')
+        os.sys.stdout.flush()
         from sklearn.decomposition import PCA
         from sklearn.feature_extraction.image import extract_patches
-        patches = extract_patches(X_data, (1, X_data.shape[1], pca_time_width), (1, X_data.shape[1], pca_stride))
+        patches = extract_patches(X_data, 
+                                  (1, pca_freq_width, pca_time_width), 
+                                  (1, pca_freq_stride, pca_time_stride))
         patches_reshaped = patches.reshape(np.prod(patches.shape[:3]),
                                            np.prod(patches.shape[3:]))
+        #U, s, V = np.linalg.svd(patches_reshaped) 
+        #V_cut = V[:pca_components, :]
+        #patches_transformed = V_cut.dot(patches_reshaped.T).T                               
+        #patches_transformed = patches_reshaped.dot (np.conj (V_cut.T))                               
         pca = PCA(n_components=pca_components)
         patches_transformed = pca.fit_transform(patches_reshaped)
         patches_transformed.shape = X_data.shape[0], -1, patches_transformed.shape[1]
-        X, y = patches_transformed.reshape(X_data.shape[0], -1), y_data.ravel()
+        X, y = (patches_transformed.reshape(X_data.shape[0], -1)), y_data.ravel()
+        
+        
+        
     elif connections == 'none':
         X, y = X_data.reshape(X_data.shape[0], -1), y_data.ravel()
     else:
         raise ValueError ('invalid task requested')
 
     print ('classifying...')
+    os.sys.stdout.flush()
     from sklearn.cross_validation import StratifiedShuffleSplit
     cv = StratifiedShuffleSplit(y_data, n_iter=nfolds, test_size=split,)
                                 #random_state=42)    
@@ -155,4 +171,11 @@ if __name__ == "__main__":
     scores = cross_val_score(pipeline, X, y, cv=cv, scoring='accuracy', n_jobs=10)
     print ('mean accuracy: {}+-{}'.format(scores.mean(), scores.std() / np.sqrt(nfolds)))
     
+    import matplotlib.pyplot as plt
+    plt.figure ()    
+    for i in range (pca_components):
+        plt.subplot (np.sqrt(pca_components) + 1, np.sqrt (pca_components) + 1, i + 1)
+        plt.imshow (pca.components_[i].reshape(pca_freq_width, pca_time_width), aspect='auto')
+        
+    plt.show (False)
 #eof
