@@ -23,6 +23,8 @@ import os.path
 from mel_scat import mel_scat
 from cqt_scat import cqt_scat
 from flex_scat import flex_scat
+from scattering import scattering
+from joblib import Parallel, delayed
 
 db_location = '../../datasets/ESC-50-master'
 log_features = True
@@ -41,7 +43,9 @@ params = {'features':'cqt',
           'fmin':32.7, 'fmax':11000,
           'alphas':(6,6),'Qs':(12,12), # only used for flex scattering
           'nclasses': 5, 'max_sample_size':110250}
- 
+
+num_cores = 30                        
+
 def get_features (file, features, channels, hops, fmin, fmax, alphas, Qs,
                   max_sample_size):
     y = np.zeros(max_sample_size);   
@@ -67,7 +71,8 @@ def get_features (file, features, channels, hops, fmin, fmax, alphas, Qs,
         s = flex_scat(y=y, sr=sr, alphas=alphas, Qs=Qs,
                         hop_lengths=hops, channels=channels, 
                         fmin=fmin, fmax=fmax, fft_size=1024)
-        return s
+    elif features == 'plain_scat_':
+        return scattering(y, None, 1)
     else:
         raise ValueError('Unkonwn features requested')
 
@@ -75,6 +80,9 @@ cachedir = os.path.expanduser('~/esc50_pcanet_joblib')
 memory = joblib.Memory(cachedir=cachedir, verbose=1)
 cached_get_features = memory.cache(get_features)
 
+def parallel_wrapper_features(args):
+    return cached_get_features(*args)
+    
 def compute_features (root_path, params):
     features = params['features']
     channels = params['channels']
@@ -88,16 +96,19 @@ def compute_features (root_path, params):
     y_data = []
     classes = 0    
     X_list = []
-
+    
     for root, dir, files in os.walk(root_path):
-        waves = fnmatch.filter(files, "*.wav")
+        waves = fnmatch.filter(files, "*.ogg")
         if len(waves) != 0:
             print ("class: " + root.split("/")[-1])
-            for item in waves:
-                l = cached_get_features(os.path.join(root, item), features, 
-                                        channels, hops, fmin, fmax,
-                                        alphas, Qs, max_sample_size)
-                X_list.append([l])
+            arg_list = [(os.path.join(root, item), features, 
+                         channels, hops, fmin, fmax,
+                         alphas, Qs, max_sample_size) for item in waves]
+            results = Parallel(n_jobs=num_cores)(delayed(parallel_wrapper_features)(args) 
+                        for args in arg_list)
+
+            for i, item in enumerate(waves):
+                X_list.append([results[i]]) #[l]
                 y_data.append (classes)
 
             classes = classes + 1
