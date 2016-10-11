@@ -36,13 +36,13 @@ pca_time_width = 9
 pca_time_stride = 2
 pca_freq_width = 9
 pca_freq_stride = 4
-connections = 'pca_net'
+connections = 'none' #'pca_net'
 
 params = {'features':'cqt',  
           'channels': (84,12), 'hops': (1024,4),
           'fmin':32.7, 'fmax':11000,
           'alphas':(6,6),'Qs':(12,12), # only used for flex scattering
-          'nclasses': 5, 'max_sample_size':110250}
+          'nclasses': 5, 'max_sample_size':2**17}
 
 num_cores = 30                        
 
@@ -72,7 +72,8 @@ def get_features (file, features, channels, hops, fmin, fmax, alphas, Qs,
                         hop_lengths=hops, channels=channels, 
                         fmin=fmin, fmax=fmax, fft_size=1024)
     elif features == 'plain_scat_':
-        return scattering(y, None, 1)
+        S, _, _ = scattering(y, wavelet_filters=None, wavelet_filters_order2=None, M=1)
+        return S
     else:
         raise ValueError('Unkonwn features requested')
 
@@ -196,18 +197,19 @@ if __name__ == "__main__":
     print ('mean accuracy: {}+-{}'.format(scores.mean(), scores.std() / np.sqrt(nfolds)))
     
     import matplotlib.pyplot as plt
-    plt.figure ()    
-    for i in range (pca_components):
-        plt.subplot (np.sqrt(pca_components) + 1, np.sqrt (pca_components) + 1, i + 1)
-        plt.imshow (pca.components_[i].reshape(pca_freq_width, pca_time_width), aspect='auto')
-        
-    plt.show (False)
-
     
-    plt.figure ()    
-    for i in range (int(pca_components/2)):
-        plt.subplot (np.sqrt(pca_components) + 1, np.sqrt (pca_components) + 1, i + 1)        
-        plt.imshow (pca2.components_[i].reshape(pca_freq_width, pca_time_width), aspect='auto')
+    if connections == 'pca_net':
+        plt.figure ()
+        for i in range (pca_components):
+            plt.subplot (np.sqrt(pca_components) + 1, np.sqrt (pca_components) + 1, i + 1)
+            plt.imshow (pca.components_[i].reshape(pca_freq_width, pca_time_width), aspect='auto')
+        
         plt.show (False)
     
+        plt.figure ()    
+        for i in range (int(pca_components/2)):
+            plt.subplot (np.sqrt(pca_components) + 1, np.sqrt (pca_components) + 1, i + 1)        
+            plt.imshow (pca2.components_[i].reshape(pca_freq_width, pca_time_width), aspect='auto')
+            plt.show (False)
+        
 #eof
