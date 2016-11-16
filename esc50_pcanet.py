@@ -26,7 +26,7 @@ from flex_scat import flex_scat
 from scattering import scattering
 from joblib import Parallel, delayed
 
-db_location = '../../datasets/ESC-50-master'
+db_location = '../../datasets/ESC-50-WAV'
 log_features = True
 log_eps = 0.01
 nfolds = 50
@@ -36,15 +36,16 @@ pca_time_width = 9
 pca_time_stride = 2
 pca_freq_width = 9
 pca_freq_stride = 4
-connections = 'none' #'pca_net'
+connections = 'pca_net'
 
 params = {'features':'cqt',  
           'channels': (84,12), 'hops': (1024,4),
-          'fmin':32.7, 'fmax':11000,
+          'fmin':32.7, 'fmax':11001,
           'alphas':(6,6),'Qs':(12,12), # only used for flex scattering
-          'nclasses': 5, 'max_sample_size':2**17}
+          'nclasses': 20, 'max_sample_size':2**17,
+          'audio_ext':'*.wav'}
 
-num_cores = 30                        
+num_cores = 10                        
 
 def get_features (file, features, channels, hops, fmin, fmax, alphas, Qs,
                   max_sample_size):
@@ -72,7 +73,8 @@ def get_features (file, features, channels, hops, fmin, fmax, alphas, Qs,
                         hop_lengths=hops, channels=channels, 
                         fmin=fmin, fmax=fmax, fft_size=1024)
     elif features == 'plain_scat_':
-        S, _, _ = scattering(y, wavelet_filters=None, wavelet_filters_order2=None, M=1)
+        S, _, _ = scattering(y, wavelet_filters=None, wavelet_filters_order2=None, 
+                             M=2)
         return S
     else:
         raise ValueError('Unkonwn features requested')
@@ -99,7 +101,7 @@ def compute_features (root_path, params):
     X_list = []
     
     for root, dir, files in os.walk(root_path):
-        waves = fnmatch.filter(files, "*.ogg")
+        waves = fnmatch.filter(files, params['audio_ext'])
         if len(waves) != 0:
             print ("class: " + root.split("/")[-1])
             arg_list = [(os.path.join(root, item), features, 
