@@ -30,7 +30,7 @@ import matplotlib.pyplot as plt
 db_location = '../../datasets/ESC-50-WAV'
 log_features = True
 log_eps = 0.01
-nfolds = 50
+nfolds = 1
 split = 0.25
 pca_components = 50
 pca_time_width = 9
@@ -40,18 +40,15 @@ pca_freq_stride = 4
 connections = 'pca_net'
 
 #update this list to test over different features
-features_list = ['cqt', 'mel_scat', 'cqt_scat', 'plain_scat_1', 
-                 'plain_scat_2', ]
+features_list = ['cqt' ]
 
-params = {'features':'cqt',  
-          'channels': (84,12), 'hops': (1024,4),
+params = {'channels': (84,12), 'hops': (1024,4),
           'fmin':32.7, 'fmax':11001,
           'alphas':(6,6),'Qs':(12,12), # only used for flex scattering
-          'nclasses': 20, 'max_sample_size':2**17,
+          'nclasses': 5, 'max_sample_size':2**17,
           'audio_ext':'*.wav'}
 
 num_cores = 10                        
-
 
 def get_features (file, features, channels, hops, fmin, fmax, alphas, Qs,
                   max_sample_size):
@@ -66,7 +63,7 @@ def get_features (file, features, channels, hops, fmin, fmax, alphas, Qs,
     
     if features == 'cqt':
         return np.abs(librosa.core.cqt (y=y, sr=sr, hop_length=hops[0], 
-                                        n_bins=channels[0], real=False)) 
+                                        n_bins=channels[0], real=False))                           
     elif features == 'mel_scat':
         s, m = mel_scat(y=y, sr=sr, hop_lengths=hops, channels=channels, 
                         fmin=fmin, fmax=fmax, fft_size=1024)
@@ -96,8 +93,7 @@ cached_get_features = memory.cache(get_features)
 def parallel_wrapper_features(args):
     return cached_get_features(*args)
     
-def compute_features (root_path, params):
-    features = params['features']
+def compute_features (root_path, features, params):
     channels = params['channels']
     hops = params['hops']
     fmin = params['fmin']
@@ -147,8 +143,7 @@ if __name__ == "__main__":
     os.sys.stdout.flush()
     scores_features = {}
     for feat in features_list:
-        params['features'] = feat
-        X_data, y_data = compute_features (db_location, params)
+        X_data, y_data = compute_features (db_location, feat, params)
     
     
         if log_features == True:
@@ -161,7 +156,7 @@ if __name__ == "__main__":
             os.sys.stdout.flush()
             from sklearn.decomposition import PCA
             from sklearn.feature_extraction.image import extract_patches
-            print (X_data.shape)10
+            print (X_data.shape)
             patches = extract_patches(X_data, 
                                       (1, pca_freq_width, pca_time_width), 
                                       (1, pca_freq_stride, pca_time_stride))
