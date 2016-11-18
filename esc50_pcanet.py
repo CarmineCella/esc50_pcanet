@@ -45,7 +45,7 @@ features_list = ['cqt' ]
 params = {'channels': (84,12), 'hops': (1024,4),
           'fmin':32.7, 'fmax':11001,
           'alphas':(6,6),'Qs':(12,12), # only used for flex scattering
-          'nclasses': 5, 'max_sample_size':2**17,
+          'nclasses': 50, 'max_sample_size':2**17,
           'audio_ext':'*.wav'}
 
 num_cores = 10                        
