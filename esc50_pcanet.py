@@ -33,16 +33,16 @@ log_eps = 0.01
 nfolds = 1
 split = 0.25
 pca_components = 50
-pca_time_width = 9
-pca_time_stride = 2
-pca_freq_width = 9
-pca_freq_stride = 4
+pca_time_width = 15
+pca_time_stride = 7
+pca_freq_width = 15
+pca_freq_stride = 7
 connections = 'pca_net'
 
 #update this list to test over different features
-features_list = ['cqt' ]
+features_list = ['mel_scat']
 
-params = {'channels': (84,12), 'hops': (1024,4),
+params = {'channels': (84,12), 'hops': (512,4),
           'fmin':32.7, 'fmax':11001,
           'alphas':(6,6),'Qs':(12,12), # only used for flex scattering
           'nclasses': 50, 'max_sample_size':2**17,
