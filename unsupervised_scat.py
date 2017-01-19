@@ -27,6 +27,8 @@ from scattering import scattering
 from joblib import Parallel, delayed
 import matplotlib.pyplot as plt
 
+from esc50_pcanet import get_features, parallel_wrapper_features, compute_features
+
 db_location = '/home/leonardblier/ESC-50/'
 log_features = True
 log_eps = 0.01
@@ -51,90 +53,12 @@ params = {'channels': (84,12), 'hops': (512,4),
 
 num_cores = 20                        
 
-def get_features (file, features, channels, hops, fmin, fmax, alphas, Qs,
-                  max_sample_size):
-    y = np.zeros(max_sample_size);   
-    yt, sr = librosa.core.load (file)
-    
-    if len(yt) == 0: 
-        print ('*** warning: empty file -> ' + file + '! ***')
-
-    min_length = min(len(y), len(yt))
-    y[:min_length] = yt[:min_length]
-    
-    if features == 'cqt':
-        return np.abs(librosa.core.cqt (y=y, sr=sr, hop_length=hops[0], 
-                                        n_bins=channels[0], real=False))                           
-    elif features == 'mel_scat':
-        s, m = mel_scat(y=y, sr=sr, hop_lengths=hops, channels=channels, 
-                        fmin=fmin, fmax=fmax, fft_size=1024)
-        return s
-    elif features == 'cqt_scat':
-        s, m = cqt_scat(y=y, sr=sr, hops=hops, bins=channels, fmin=fmin)
-        return s        
-    elif features == 'flex_scat':
-        s = flex_scat(y=y, sr=sr, alphas=alphas, Qs=Qs,
-                        hop_lengths=hops, channels=channels, 
-                        fmin=fmin, fmax=fmax, fft_size=1024)
-    elif features == 'plain_scat_1':
-        S, _, _ = scattering(y, wavelet_filters=None,\
-                    wavelet_filters_order2=None, M=1)
-        return S
-    elif features == 'plain_scat_2':
-        S, _, _ = scattering(y, wavelet_filters=None,\
-                    wavelet_filters_order2=None, M=2)
-        return S
-    else:
-        raise ValueError('Unkonwn features requested')
 
 cachedir = os.path.expanduser('~/esc50_pcanet_joblib')
 memory = joblib.Memory(cachedir=cachedir, verbose=1)
 cached_get_features = memory.cache(get_features)
 
-def parallel_wrapper_features(args):
-    return cached_get_features(*args)
-    
-def compute_features (root_path, features, params):
-    channels = params['channels']
-    hops = params['hops']
-    fmin = params['fmin']
-    fmax = params['fmax']
-    alphas = params['alphas']
-    Qs = params['Qs']
-    max_sample_size = params['max_sample_size']
-        
-    y_data = []
-    classes = 0    
-    X_list = []
-    
-    for root, dir, files in os.walk(root_path):
-        waves = fnmatch.filter(files, params['audio_ext'])
-        if len(waves) != 0:
-            print ("class: " + root.split("/")[-1])
-            arg_list = [(os.path.join(root, item), features, 
-                         channels, hops, fmin, fmax,
-                         alphas, Qs, max_sample_size) for item in waves]
-            results = Parallel(n_jobs=num_cores)(delayed(parallel_wrapper_features)(args) 
-                        for args in arg_list)
 
-            for i, item in enumerate(waves):
-                X_list.append([results[i]]) #[l]
-                y_data.append (classes)
-
-            classes = classes + 1
-            if classes >= params['nclasses']:
-                break
-    
-    X_flat_list = [X_list[class_id][file_id]
-                for class_id in range(len(X_list))
-                for file_id in range(len(X_list[class_id]))]
-
-    X_data = np.stack(X_flat_list, axis=0)
-    #X_data = np.transpose(X_data, (2,0,1))
-    
-    print ("classes = " + str (classes))
-
-    return X_data, np.array (y_data)
 
 
 def plot_pca_net(pca):
