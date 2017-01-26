@@ -414,12 +414,12 @@ def scattering(x,wavelet_filters=None,wavelet_filters_order2=None,M=2):
         psi_specs, _, _ = psi_specs_order[0] 
         filters, _ = filterbank_morlet_1d(N, psi_specs, nOctaves)
         wavelet_filters = \
-        filterbank_to_multiresolutionfilterbank(filters, nOctaves)
+            filterbank_to_multiresolutionfilterbank(filters, nOctaves)
         if(M==2 and wavelet_filters_order2==None):
             psi_specs_2, _, _ = psi_specs_order[1]
             filters_order2, _ = filterbank_morlet_1d(N, psi_specs_2, nOctaves)
             wavelet_filters_order2 = \
-            filterbank_to_multiresolutionfilterbank(filters_order2, nOctaves)
+                filterbank_to_multiresolutionfilterbank(filters_order2, nOctaves)
             
     keys_jq = max(list(wavelet_filters['psi'].keys()))
     nOctaves = keys_jq[0] + 1 
@@ -446,7 +446,7 @@ def scattering(x,wavelet_filters=None,wavelet_filters_order2=None,M=2):
     v_resolution = []
     current_resolution = 0
     #output coefficients matrix
-    S = np.zeros((num_coefs,window_size)) 
+    S = np.zeros((num_coefs,window_size), dtype=np.complex64) 
     S_tree = {} 
     
     Xf = fft_module.fft(x) # precompute the fourier transform of the signal
@@ -524,7 +524,7 @@ def scattering(x,wavelet_filters=None,wavelet_filters_order2=None,M=2):
                     axarr2[indx].set_title(title_2 + repr(phi_support_len))
                     axarr3[indx].plot(U[indx]) 
                     axarr3[indx].plot(x_conv)
-#                    axarr3[indx].set_title('Max_val ='+repr(max(S1[indx, :])))
+                    # axarr3[indx].set_title('Max_val ='+repr(max(S1[indx, :])))
                 
                 indx = indx + 1
         
@@ -554,11 +554,16 @@ def scattering(x,wavelet_filters=None,wavelet_filters_order2=None,M=2):
                     for q2 in range(nfo2):
                         # | U_lambda1 * Psi_j2 | * phi
                         filtersj2q2 = wavelet_filters_order2['psi'][(j2,q2)][current_resolution].view()
-                        #Subsampling is only required in order 1 to set the resolution of the signal decided by the wavelet bandpass filters 
+                        #Subsampling is only required in order 1 to set the resolution of
+                        #the signal decided by the wavelet bandpass filters 
                         x_conv = np.abs(fft_module.ifft(Ujq*filtersj2q2))
                         x_conv_f = fft_module.fft(x_conv) 
                         ds2 = len(x_conv_f)//window_size 
-                        Uj2 = ds2* np.abs(fft_module.ifft(x_conv_f*lp_filter))[::ds2] 
+                        
+                        #################################
+                        ## WARNING : WE DELETE THE ABS ##
+                        #Uj2 = ds2* np.abs(fft_module.ifft(x_conv_f*lp_filter))[::ds2] 
+                        Uj2 = ds2* fft_module.ifft(x_conv_f*lp_filter)[::ds2] 
                         S2[indx, :] = Uj2
                         indx = indx+1
         
@@ -693,6 +698,6 @@ display_flag, print_flag = 0, 0
 #psi_specs = get_wavelet_filter_specs(nfo, 1, nOctaves)
 #filters, lp = filterbank_morlet_1d(N, psi_specs, nOctaves)
 #wavelet_filters = filterbank_to_multiresolutionfilterbank(filters, nOctaves)
-scat = test_scattering(**test_args)
+#scat = test_scattering(**test_args)
 
             
