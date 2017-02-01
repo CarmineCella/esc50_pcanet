@@ -17,7 +17,7 @@ import pickle
 
 
 
-num_cores = 20                        
+num_cores = 15                      
 
 def get_features (file, features, channels, hops, fmin, fmax, alphas, Qs,
                   max_sample_size):
@@ -28,7 +28,16 @@ def get_features (file, features, channels, hops, fmin, fmax, alphas, Qs,
         print ('*** warning: empty file -> ' + file + '! ***')
 
     min_length = min(len(y), len(yt))
-    y[:min_length] = yt[:min_length]
+    if len(y) < len(yt):
+        y = yt[:len(y)]
+    else:
+        p = len(y) // len(yt)
+        r = len(y) % len(yt)
+        for i in range(p):
+            y[i*len(yt):(i+1)*len(yt)] = yt
+        y[-r:] = yt[:r]
+        
+    #y[:min_length] = yt[:min_length]
     
     if features == 'cqt':
         return np.abs(librosa.core.cqt (y=y, sr=sr, hop_length=hops[0], 
@@ -50,17 +59,13 @@ def get_features (file, features, channels, hops, fmin, fmax, alphas, Qs,
         S, _, _ = scattering(y, wavelet_filters=None,\
                     wavelet_filters_order2=None, M=1)
         return S
-    elif features == 'plain_scat_1_U':
-        _, U, _ = scattering(y, wavelet_filters=None,\
-                    wavelet_filters_order2=None, M=1)
-        return U
     elif features == 'plain_scat_2':
         S, U, _ = scattering(y, wavelet_filters=None,\
                     wavelet_filters_order2=None, M=2)
         return S
-    elif features == 'plain_scat_2_U':
-        S, U, S_tree = scattering(y, wavelet_filters=None,\
-                    wavelet_filters_order2=None, M=2)
+    elif features == 'plain_scat_2_tree':
+        _, _, S_tree = scattering(y, wavelet_filters=None,\
+                    wavelet_filters_order2=None, M=2, mod=False, cyclic=True)
         return S_tree
     else:
         raise ValueError('Unkonwn features requested')
@@ -85,6 +90,9 @@ def compute_features_listfiles(files, features, params):
                  alphas, Qs, max_sample_size) for f in files]
     results = Parallel(n_jobs=num_cores)(delayed(parallel_wrapper_features)(args) 
                                          for args in arg_list)
+    # If without parallel, use this line instead of the line before
+    #results = [get_features(*args) for args in arg_list]
+    print(results[0][2].shape)
     
     return results
     
@@ -139,8 +147,8 @@ def load_features(directory, n_classes, n_itemsbyclass):
 
 if __name__ == "__main__":
     root_path = "/users/data/blier/ESC-50"
-    features = "mfcc"
-    savedir = "/users/data/blier/features_esc50/mfcc"
+    features = "plain_scat_2_tree"
+    savedir = "/users/data/blier/features_esc50/scat_10_12_6"
     params = {'channels': (84,12), 'hops': (512,4),
           'fmin':32.7, 'fmax':11001,
           'alphas':(6,6),'Qs':(12,12), # only used for flex scattering
