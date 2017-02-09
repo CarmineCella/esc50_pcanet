@@ -423,8 +423,8 @@ def scattering(x,wavelet_filters=None,wavelet_filters_order2=None,M=2, mod=True,
     if(wavelet_filters==None):#build filters 
         #pdb.set_trace()
         N = len(x)        
-        nfo = [12, 12]
-        nOctaves = 10
+        nfo = [12, 1]
+        nOctaves = 8
         quality_factor = 4 #defaults
         
         psi_specs_order = get_wavelet_filter_specs(nfo, \

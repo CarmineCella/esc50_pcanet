@@ -21,7 +21,7 @@ from compute_features import compute_features, load_features
 import pdb
 
 
-def load_vertical_transform(directory, n_classes, n_itemsbyclass, vert_wav, log_eps = 0.0001):
+def load_transform(directory, n_classes, n_itemsbyclass, trans_obj):
     files = [f for f in os.listdir(directory)]
     classes = 0
     X = []
@@ -32,7 +32,8 @@ def load_vertical_transform(directory, n_classes, n_itemsbyclass, vert_wav, log_
             data = pickle.load(f)
         x_class = data[:n_itemsbyclass]
         
-        x_class_transformed = vert_wav.transform(x_class)
+        
+        x_class_transformed = trans_obj.transform(x_class)
         X.extend(x_class_transformed)
         y.extend([classes for _ in range( \
             min(n_itemsbyclass,len(data)))])

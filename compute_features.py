@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import os 
+import h5py
 import fnmatch
 import joblib
 import librosa
@@ -145,10 +146,45 @@ def load_features(directory, n_classes, n_itemsbyclass):
         classes += 1
     return X, np.array(y)
 
+
+def features_to_h5(directory, savefile, n_itemsbyclass=40):
+    files = sorted([f for f in os.listdir(directory)])
+    classes = 0
+    y = []
+    
+    h5file = h5py.File(savefile, "w")
+    for filename in files:
+        
+            
+        print(filename)
+        with open(os.path.join(directory, filename), 'rb') as f:
+            data = pickle.load(f)
+        X = data[:n_itemsbyclass]
+        y.extend([classes for _ in range( \
+            min(n_itemsbyclass,len(data)))])
+        if classes == 0:
+            shape_scat_0 = (n_itemsbyclass*len(files), X[0][0].shape[0])
+            shape_scat_1 = (n_itemsbyclass*len(files), X[0][1].shape[0], X[0][1].shape[1])
+            shape_scat_2 = (n_itemsbyclass*len(files), X[0][2].shape[0], X[0][2].shape[1], X[0][2].shape[2])
+            
+            dset_scat0 = h5file.create_dataset("scat0", shape_scat_0, dtype='float64')
+            dset_scat1 = h5file.create_dataset("scat1", shape_scat_1, dtype='float64')
+            dset_scat2 = h5file.create_dataset("scat2", shape_scat_2, dtype='complex64')
+            
+        dset_scat0[classes*n_itemsbyclass:(classes+1)*n_itemsbyclass,:] = np.stack([x[0] for x in X])
+        dset_scat1[classes*n_itemsbyclass:(classes+1)*n_itemsbyclass,:,:] = np.stack([x[1] for x in X])
+        dset_scat2[classes*n_itemsbyclass:(classes+1)*n_itemsbyclass,:,:,:] = np.stack([x[2] for x in X])
+        
+        classes += 1
+    dset_labels = h5file.create_dataset("labels", (n_itemsbyclass*len(files), ), dtype='i')
+    dset_labels[:] = np.array(y)
+    
+    
+    
 if __name__ == "__main__":
     root_path = "/users/data/blier/ESC-50"
     features = "plain_scat_2_tree"
-    savedir = "/users/data/blier/features_esc50/scat_10_12_6"
+    savedir = "/users/data/blier/features_esc50/scat_8_12_1"
     params = {'channels': (84,12), 'hops': (512,4),
           'fmin':32.7, 'fmax':11001,
           'alphas':(6,6),'Qs':(12,12), # only used for flex scattering
