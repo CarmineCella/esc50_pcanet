@@ -19,7 +19,7 @@ from keras import backend as K
 from keras.engine.topology import Layer
 from keras.models import Model
 from keras.layers import Input, merge
-from keras.layers.core import Activation, Dense, Permute, Merge
+from keras.layers.core import Activation, Dense, Permute, Merge, Lambda, Dropout
 from keras.layers.convolutional import Convolution1D
 from keras.layers.pooling import GlobalAveragePooling2D
 from keras.utils.io_utils import HDF5Matrix
@@ -38,8 +38,10 @@ logging.debug('This message should go to the log file')
 
 
 
+
 class Convolution1D_4Tensor(Layer):
-    def __init__(self, dim1_shape, nb_filter, filter_length, activation=None, **kwargs):
+    def __init__(self, dim1_shape, nb_filter, filter_length,
+                 activation=None, **kwargs):
         self.dim1_shape = dim1_shape
         self.convolution1D = Convolution1D(nb_filter, filter_length, activation=activation)
         output_dim = Convolution1D.output_shape
@@ -76,24 +78,51 @@ class Convolution1D_4Tensor(Layer):
 def learn_joint_scat_model(nOctaves, nfo, nfo2, nClasses=50, n_samples=256, filter_factor=2):
     input_scat0 = Input(shape=(1,))
     input_scat1 = Input(shape=(nfo*nOctaves,))
-    inputs_scat2 = [Input(shape=(j2*nfo , nfo2, n_samples)) for j2 in range(1, nOctaves)]
-    conv_1 = [Convolution1D_4Tensor(n_samples, j2*filter_factor, 2*j2, activation="relu") \
+
+    # Treat the real part
+    inputs_scat2_real = [Input(shape=(j2*nfo , nfo2, n_samples)) for j2 in range(1, nOctaves)]
+    conv_1_real = [Convolution1D_4Tensor(n_samples, j2*filter_factor, 2*j2, activation=None) \
               for j2 in range(1, nOctaves)]
-    x_list = [Permute((3,1,2))(x) for x in inputs_scat2]
-    x_list = [conv(x) for (conv, x) in zip(conv_1, x_list)]
-    x_list = [Permute((3, 2, 1))(x) for x in x_list]
+
+    x_list_real = [Permute((3,1,2))(x) for x in inputs_scat2_real]
+    x_list_real = [conv(x) for (conv, x) in zip(conv_1_real, x_list_real)]
+    x_list_real = [Permute((3, 2, 1))(x) for x in x_list_real]
+
+    # Treat the imaginary part
+    inputs_scat2_imag = [Input(shape=(j2*nfo , nfo2, n_samples)) for j2 in range(1, nOctaves)]
+    conv_1_imag = [Convolution1D_4Tensor(n_samples, j2*filter_factor, 2*j2, activation=None) \
+              for j2 in range(1, nOctaves)]
+
+    x_list_imag = [Permute((3,1,2))(x) for x in inputs_scat2_imag]
+    x_list_imag = [conv(x) for (conv, x) in zip(conv_1_imag, x_list_imag)]
+    x_list_imag = [Permute((3, 2, 1))(x) for x in x_list_imag]
+    # Merge the real and imaginary parts.
+
+    def complex_modulus(x_real, x_imag):
+        pow2 = Lambda((lambda x: x**2))
+        sqrt = Lambda((lambda x: x**(1./2)))
+        return sqrt(merge([pow2(x_real), pow2(x_imag)], mode='sum'))
+
+    x_list = [complex_modulus(x_real, x_imag) for (x_real, x_imag) in zip(x_list_real, x_list_imag)]
+
+    # Average
     pool2D = GlobalAveragePooling2D()
+
 
     x_pooled_list = [input_scat0, input_scat1]
 
     x_pooled_list.extend([pool2D(x) for x in x_list])
     x_merged = merge(x_pooled_list, mode='concat', concat_axis=1)
 
-    representation = Dense(nClasses)(x_merged)
+    # Clasiffy
+    representation = Dense(256)(x_merged)
+    representation = Dropout(0.5)(representation)
+    representation = Dense(nClasses)(representation)
     output = Activation("softmax")(representation)
 
     inputs = [input_scat0, input_scat1]
-    inputs.extend(inputs_scat2)
+    inputs.extend(inputs_scat2_real)
+    inputs.extend(inputs_scat2_imag)
     model = Model(input=inputs, output=output)
     return model
 
@@ -148,10 +177,12 @@ class generator_scat_h5(object):
         X1 = np.array(self.scat1[lab,:,:])
         X1 = self.normalizer_mean(X1)
         X2 = np.array(self.scat2[lab,:,:,:])
-        X2_list = [X2[:,:j2*nfo,j2*nfo2:(j2+1)*nfo2,:] for j2 in range(1, self.nOctaves)]
+        X2_list_real = [X2[:,:j2*nfo,j2*nfo2:(j2+1)*nfo2,:].real for j2 in range(1, self.nOctaves)]
+        X2_list_imag = [X2[:,:j2*nfo,j2*nfo2:(j2+1)*nfo2,:].real for j2 in range(1, self.nOctaves)]
 
         out = [X0, X1]
-        out.extend(X2_list)
+        out.extend(X2_list_real)
+        out.extend(X2_list_imag)
 
         y = self.Y[lab]
         y_binarized = label_binarize(y, np.arange(self.nclasses))
@@ -199,6 +230,8 @@ if __name__ == "__main__":
     #    X2_list = [np.stack([x2[:j2*nfo,j2*nfo2:(j2+1)*nfo2,:] for x2 in X2]) \
     #               for j2 in range(1, nOctaves)]
     #    return X0, X1, X2_list
+
+
 
 
     model = learn_joint_scat_model(nOctaves, nfo, nfo2, filter_factor=2,
