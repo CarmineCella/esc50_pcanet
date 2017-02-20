@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-import os 
+import os
 import h5py
 import fnmatch
 import joblib
@@ -18,14 +18,14 @@ import pickle
 
 
 
-num_cores = 15                      
+num_cores = 15
 
 def get_features (file, features, channels, hops, fmin, fmax, alphas, Qs,
-                  max_sample_size):
-    y = np.zeros(max_sample_size);   
+                  max_sample_size, **kwargs):
+    y = np.zeros(max_sample_size);
     yt, sr = librosa.core.load (file)
-    
-    if len(yt) == 0: 
+
+    if len(yt) == 0:
         print ('*** warning: empty file -> ' + file + '! ***')
 
     min_length = min(len(y), len(yt))
@@ -37,24 +37,24 @@ def get_features (file, features, channels, hops, fmin, fmax, alphas, Qs,
         for i in range(p):
             y[i*len(yt):(i+1)*len(yt)] = yt
         y[-r:] = yt[:r]
-        
+
     #y[:min_length] = yt[:min_length]
-    
+
     if features == 'cqt':
-        return np.abs(librosa.core.cqt (y=y, sr=sr, hop_length=hops[0], 
-                                        n_bins=channels[0], real=False))      
+        return np.abs(librosa.core.cqt (y=y, sr=sr, hop_length=hops[0],
+                                        n_bins=channels[0], real=False))
     if features == 'mfcc':
-        return librosa.feature.mfcc(y=y, sr=sr)     
+        return librosa.feature.mfcc(y=y, sr=sr)
     elif features == 'mel_scat':
-        s, m = mel_scat(y=y, sr=sr, hop_lengths=hops, channels=channels, 
+        s, m = mel_scat(y=y, sr=sr, hop_lengths=hops, channels=channels,
                         fmin=fmin, fmax=fmax, fft_size=1024)
         return s
     elif features == 'cqt_scat':
         s, m = cqt_scat(y=y, sr=sr, hops=hops, bins=channels, fmin=fmin)
-        return s        
+        return s
     elif features == 'flex_scat':
         s = flex_scat(y=y, sr=sr, alphas=alphas, Qs=Qs,
-                        hop_lengths=hops, channels=channels, 
+                        hop_lengths=hops, channels=channels,
                         fmin=fmin, fmax=fmax, fft_size=1024)
     elif features == 'plain_scat_1':
         S, _, _ = scattering(y, wavelet_filters=None,\
@@ -66,7 +66,8 @@ def get_features (file, features, channels, hops, fmin, fmax, alphas, Qs,
         return S
     elif features == 'plain_scat_2_tree':
         _, _, S_tree = scattering(y, wavelet_filters=None,\
-                    wavelet_filters_order2=None, M=2, mod=False, cyclic=True)
+                    wavelet_filters_order2=None, M=2, mod=False, cyclic=True,
+                    **kwargs)
         return S_tree
     else:
         raise ValueError('Unkonwn features requested')
@@ -77,8 +78,9 @@ cached_get_features = memory.cache(get_features)
 
 def parallel_wrapper_features(args):
     return cached_get_features(*args)
-    
-def compute_features_listfiles(files, features, params):
+
+def compute_features_listfiles(files, features, params, **kwargs):
+    # BEWARE : THE KWARGS ARE ONLY FOR THE NON PARALLEL MODE !!!
     channels = params['channels']
     hops = params['hops']
     fmin = params['fmin']
@@ -86,28 +88,27 @@ def compute_features_listfiles(files, features, params):
     alphas = params['alphas']
     Qs = params['Qs']
     max_sample_size = params['max_sample_size']
-    
-    arg_list = [(f, features, channels, hops, fmin, fmax,
+
+    arg_list = [(f, features, channels, hops, fmin, fmax, \
                  alphas, Qs, max_sample_size) for f in files]
-    results = Parallel(n_jobs=num_cores)(delayed(parallel_wrapper_features)(args) 
-                                         for args in arg_list)
+    #results = Parallel(n_jobs=num_cores)(delayed(parallel_wrapper_features)(args)
+    #                                     for args in arg_list)
     # If without parallel, use this line instead of the line before
-    #results = [get_features(*args) for args in arg_list]
-    print(results[0][2].shape)
-    
+    results = [get_features(*args, **kwargs) for args in arg_list]
+
     return results
-    
+
 def compute_features(root_path, features, params, savedir = None):
     y_data = []
-    classes = 0    
+    classes = 0
     X_list = []
-    
+
     for root, dir, files in os.walk(root_path):
         waves = fnmatch.filter(files, params['audio_ext'])
         if len(waves) == 0:
             continue
         print ("class: " + root.split("/")[-1])
-        results = compute_features_listfiles([os.path.join(root, f) for f in files], 
+        results = compute_features_listfiles([os.path.join(root, f) for f in files],
                                              features, params)
 
         if savedir is not None:
@@ -117,13 +118,13 @@ def compute_features(root_path, features, params, savedir = None):
             pickle.dump(results, savefile)
             savefile.close()
         else :
-            X_list.extend(results) 
+            X_list.extend(results)
             y_data.extend([classes for _ in range(len(waves))])
-            
+
         classes = classes + 1
         if classes >= params['nclasses']:
             break
-    
+
     if savedir is None:
         X_data = np.stack(X_list, axis=0)
         return X_data, np.array (y_data)
@@ -151,11 +152,11 @@ def features_to_h5(directory, savefile, n_itemsbyclass=40):
     files = sorted([f for f in os.listdir(directory)])
     classes = 0
     y = []
-    
+
     h5file = h5py.File(savefile, "w")
     for filename in files:
-        
-            
+
+
         print(filename)
         with open(os.path.join(directory, filename), 'rb') as f:
             data = pickle.load(f)
@@ -166,21 +167,21 @@ def features_to_h5(directory, savefile, n_itemsbyclass=40):
             shape_scat_0 = (n_itemsbyclass*len(files), X[0][0].shape[0])
             shape_scat_1 = (n_itemsbyclass*len(files), X[0][1].shape[0], X[0][1].shape[1])
             shape_scat_2 = (n_itemsbyclass*len(files), X[0][2].shape[0], X[0][2].shape[1], X[0][2].shape[2])
-            
+
             dset_scat0 = h5file.create_dataset("scat0", shape_scat_0, dtype='float64')
             dset_scat1 = h5file.create_dataset("scat1", shape_scat_1, dtype='float64')
             dset_scat2 = h5file.create_dataset("scat2", shape_scat_2, dtype='complex64')
-            
+
         dset_scat0[classes*n_itemsbyclass:(classes+1)*n_itemsbyclass,:] = np.stack([x[0] for x in X])
         dset_scat1[classes*n_itemsbyclass:(classes+1)*n_itemsbyclass,:,:] = np.stack([x[1] for x in X])
         dset_scat2[classes*n_itemsbyclass:(classes+1)*n_itemsbyclass,:,:,:] = np.stack([x[2] for x in X])
-        
+
         classes += 1
     dset_labels = h5file.create_dataset("labels", (n_itemsbyclass*len(files), ), dtype='i')
     dset_labels[:] = np.array(y)
-    
-    
-    
+
+
+
 if __name__ == "__main__":
     root_path = "/users/data/blier/ESC-50"
     features = "plain_scat_2_tree"
@@ -192,4 +193,3 @@ if __name__ == "__main__":
           'audio_ext':'*.ogg'}
 
     compute_features(root_path, features, params, savedir)
-                     
