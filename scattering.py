@@ -60,14 +60,13 @@ def get_wavelet_filter_specs(nfo, quality_factor, nOctaves):
 
     Parameters
     ----------
-    nfo : (scalar or list of size M)
+    nfo : scalar
         number of wavelets per octave in the fourier domain
     quality_factor : (scalar or list of size M)
         This is the ratio of center freq. to bandwidth
     nOctaves (scalar or list of size scattering order)
         number of octaves covering the fourier domain
-    M : scattering order
-        the order of scattering transform (max tested = 2)
+
 
     Returns
     -------
@@ -102,36 +101,66 @@ def get_wavelet_filter_specs(nfo, quality_factor, nOctaves):
 
     """
     #check there are only 2 values of nfo possible
-    assert(len(nfo)<=2)
-    psi_spec_order = {}
-    for order in range(len(nfo)):
-        mother_frequency = get_mother_frequency(nfo[order])
-        psi_specs = {}
-        fc_vec = []
-        bw_vec = []
+    # assert(len(nfo)<=2)
+    # psi_spec_order = {}
+    # for order in range(len(nfo)):
+    #     mother_frequency = get_mother_frequency(nfo[order])
+    #     psi_specs = {}
+    #     fc_vec = []
+    #     bw_vec = []
+    #
+    #     for j in range(nOctaves):
+    #         for q in range(0, nfo[order]):
+    #             gamma = j * nfo[order] + q
+    #             resolution = np.power(2, -gamma / nfo[order])
+    #             centerfrequency = mother_frequency * resolution
+    #             bandwidth = centerfrequency / quality_factor
+    #             psi_specs[(j,q)] = (centerfrequency, bandwidth)
+    #             fc_vec.append(centerfrequency)
+    #             bw_vec.append(bandwidth)
+    #
+    #     psi_spec_order[order] = (psi_specs, fc_vec, bw_vec)
+    #
+    #     if(display_flag):
+    #         plt.figure()
+    #         plt.plot(fc_vec)
+    #         plt.plot(bw_vec)
+    #         plt.title('Normalized bw and Fc for order =' +repr(order))
+    #         plt.xlabel('Filter index')
+    #         plt.ylabel('Normalized Center Frequency f in [0,1]')
+    #         plt.legend(('fc','bw'))
+    #
+    # return psi_spec_order
 
-        for j in range(nOctaves):
-            for q in range(0, nfo[order]):
-                gamma = j * nfo[order] + q
-                resolution = np.power(2, -gamma / nfo[order])
-                centerfrequency = mother_frequency * resolution
-                bandwidth = centerfrequency / quality_factor
-                psi_specs[(j,q)] = (centerfrequency, bandwidth)
-                fc_vec.append(centerfrequency)
-                bw_vec.append(bandwidth)
 
-        psi_spec_order[order] = (psi_specs, fc_vec, bw_vec)
+    mother_frequency = get_mother_frequency(nfo)
+    psi_specs = {}
+    fc_vec = []
+    bw_vec = []
 
-        if(display_flag):
-            plt.figure()
-            plt.plot(fc_vec)
-            plt.plot(bw_vec)
-            plt.title('Normalized bw and Fc for order =' +repr(order))
-            plt.xlabel('Filter index')
-            plt.ylabel('Normalized Center Frequency f in [0,1]')
-            plt.legend(('fc','bw'))
+    for j in range(nOctaves):
+        for q in range(0, nfo[order]):
+            gamma = j * nfo + q
+            resolution = np.power(2, -gamma / nfo)
+            centerfrequency = mother_frequency * resolution
+            bandwidth = centerfrequency / quality_factor
+            psi_specs[(j,q)] = (centerfrequency, bandwidth)
+            fc_vec.append(centerfrequency)
+            bw_vec.append(bandwidth)
+
+    psi_spec_order = (psi_specs, fc_vec, bw_vec)
+
+    if(display_flag):
+        plt.figure()
+        plt.plot(fc_vec)
+        plt.plot(bw_vec)
+        plt.title('Normalized bw and Fc for order =' +repr(order))
+        plt.xlabel('Filter index')
+        plt.ylabel('Normalized Center Frequency f in [0,1]')
+        plt.legend(('fc','bw'))
 
     return psi_spec_order
+
 
 
 def filterbank_morlet_1d(N, psi_specs, nOctaves):
@@ -367,6 +396,208 @@ def _to_len_pow2(x, cyclic=False):
         x = np.append(x, np.zeros(2**max_J-len(x)))
 
 
+
+class MyScattering():
+
+    #@method
+    def _build_filters(N, nfo, quality_factor, nOctaves):
+        """
+        N : length of the signal
+        nfo : scalar
+        """
+        psi_specs, _ , _ = \
+            get_wavelet_filter_specs(nfo, quality_factor, nOctaves)
+        filters, _ = filterbank_morlet_1d(N, psi_specs, nOctaves)
+        wavelet_filters = filterbank_to_multiresolutionfilterbank(filters,
+                                                                  nOctaves)
+        return wavelet_filters
+
+
+    def __init__(self, x, wavelet_filters=None,wavelet_filters_order2=None,M=2,
+                 nOctaves = 8, nfo1 = 12, nfo2 = 12, mod=True):
+        # If x's length is not a power of 2, it has to be completed
+        x = _to_len_pow2(x, cyclic=cyclic)
+        N = len(x)
+        quality_factor = 4
+
+
+        if wavelet_filters is None:#build filters
+            wavelet_filters = self._build_filters(N, nfo1, quality_factor, nOctaves)
+
+        if M==2 and wavelet_filters_order2==None:
+            wavelet_filters_order2 = \
+                self._build_filters(N, nfo2, quality_factor, nOctaves)
+
+        keys_jq = max(list(wavelet_filters['psi'].keys()))
+
+
+        ###############
+        ## Weird piece of code ...
+        assert nOctaves == keys_jq[0] + 1
+        assert nfo1 == keys_jq[1] + 1
+
+        #for second order
+        if(M==2):
+            keys_jq_order2 = max(list(wavelet_filters_order2['psi'].keys()))
+            assert nfo2 == keys_jq_order2[1] + 1
+        #else:
+        #    nfo2 = nfo
+        ####################
+
+        num_coefs = {
+            0: int(1),
+            1: int(1 + nOctaves*nfo),
+            2: int(1 + nOctaves*nfo + nOctaves * (nOctaves - 1) * nfo * nfo2 // 2)
+        }.get(M, -1)
+
+        window_size = int(x.shape[0]/2**(nOctaves-1)) # #coeffecients in time
+
+        oversample = 1  # subsample at rate a bit lower than the critic frequency
+
+        U = []
+        v_resolution = []
+        current_resolution = 0
+        #output coefficients matrix
+        S = np.zeros((num_coefs,window_size), dtype=np.float64)
+        S_tree = {}
+
+        Xf = fft_module.fft(x) # precompute the fourier transform of the signal
+
+
+        ds2 = len(Xf)//window_size
+        lp_filter = wavelet_filters['phi'][current_resolution]
+        S[0, :] = ds2* np.abs(fft_module.ifft(Xf*lp_filter))[::ds2]
+
+        S_tree[0] = S[0, :].view()
+
+        #pdb.set_trace()
+        if M > 0: #First order scattering coeffs
+            num_order1_coefs = nOctaves*nfo
+            S1 = S[1:num_order1_coefs+1,:].view()
+            S1.shape=(num_order1_coefs,window_size)
+            indx = 0
+
+            if(nfo==1 and display_flag):
+                #display only when Q =1 otherwise too many signals to plot
+                fig, axarr = plt.subplots(nOctaves, sharex=True)
+                fig2, axarr2 = plt.subplots(nOctaves, sharex=True)
+                fig3, axarr3 = plt.subplots(nOctaves, sharex=True)
+                fig_title = "Filtered O/p & Mask for fourier Truncation (Fourier)"
+                fig2_title = "Lowpass filters with non-zero support (Fourier)"
+                fig3_title = "Filtered signal and its absolute value (Time)"
+                fig.suptitle(fig_title, fontsize=14)
+                fig2.suptitle(fig2_title, fontsize=14)
+                fig3.suptitle(fig3_title, fontsize=14)
+
+            for j in range(nOctaves):
+                resolution = max(j-oversample, 0)
+                v_resolution.append(resolution) # resolution for the next order
+                ds =  2**resolution
+                lp_filter = wavelet_filters['phi'][resolution]
+                for q in range(nfo):
+                    filtersjq = wavelet_filters['psi'][(j,q)][current_resolution]
+                    #Fourier truncate eqs subsample in time
+                    x_conv_f = Xf*filtersjq
+                    len_x_conv_f = len(x_conv_f)
+                    x_conv_f_truncate = x_conv_f[:len_x_conv_f//ds]
+                    x_conv = fft_module.ifft(x_conv_f_truncate)
+                    x_conv_mod = np.abs(x_conv)
+                    x_conv_mod_f = fft_module.fft(x_conv_mod)
+                    ds2 = len(x_conv_mod_f)//window_size
+                    S1[indx, :] = ds2* np.abs(fft_module.ifft(x_conv_mod_f*lp_filter))[::ds2]
+                    U.append(x_conv_mod)
+
+                    if(print_flag):
+                        x_conv_time_sub = ds*fft_module.ifft(x_conv_f)[::ds]
+                        disp_str = '-->j, q, res = ' + repr((j,q,resolution)) + \
+                                    '-Fourier_trunc==subsample_time =' + \
+                                    repr(np.allclose(x_conv_time_sub,x_conv))
+                        disp_str2 = '--phi_len = ' + repr(len(lp_filter)) + \
+                                    '--Max='+repr(max(S[indx,:]))
+                        print(disp_str + disp_str2)
+
+                    if(nfo==1 and display_flag):
+                        mask = np.zeros(x_conv_f.shape)
+                        mask[:len_x_conv_f//ds] = max(np.abs(x_conv_f))
+                        axarr[indx].plot(np.abs(x_conv_f))
+                        axarr[indx].plot(mask,'k--')
+                        axarr[indx].set_title('Mask Length =' + repr(sum(mask>0)))
+
+                        phi_support_len = np.sum(np.abs(lp_filter)!=0)
+                        plot_xlen = max(phi_support_len, window_size)
+                        mask_phi = np.zeros((plot_xlen))
+                        mask_phi[:phi_support_len] = max(np.abs(lp_filter))
+                        mask_window_size = np.zeros((plot_xlen))
+                        mask_window_size[:plot_xlen] = max(mask_phi) + 1
+
+                        axarr2[indx].plot(lp_filter[:plot_xlen])
+                        axarr2[indx].plot(mask_phi,'k--')
+                        axarr2[indx].plot(mask_window_size,'r--')
+                        title_2 = 'Non-zero support of lowpass = '
+                        axarr2[indx].set_title(title_2 + repr(phi_support_len))
+                        axarr3[indx].plot(U[indx])
+                        axarr3[indx].plot(x_conv)
+                        # axarr3[indx].set_title('Max_val ='+repr(max(S1[indx, :])))
+
+                    indx = indx + 1
+
+            S_tree[1] = S1.view()
+
+            if(display_flag):
+                plt.figure()
+                plt.imshow(S1, aspect='auto', cmap='jet')
+                plt.title('First Order Coeffs : ' + repr(S1.shape) )
+                plt.xlabel('Time window')
+                plt.ylabel('octave J')
+                plt.colorbar()
+        #pdb.set_trace()
+        if M > 1:
+            #Smaller nfo2 largely reduces the number of coefficients.
+            U2_separed = np.zeros((nOctaves*nfo, nOctaves*nfo2, window_size), dtype=np.complex64)
+
+            num_order2_coefs = nOctaves*(nOctaves-1)*nfo*nfo2//2
+            S2 = S[num_order1_coefs+1:num_coefs, :].view()  # view of the data
+            S2.shape = (num_order2_coefs, window_size)
+            indx = 0
+            for j1 in range(nOctaves):
+                #pick resolution of filtered signal stored during U1 calculation.
+                current_resolution = v_resolution[j1]
+                lp_filter = wavelet_filters_order2['phi'][current_resolution]
+                for q1 in range(nfo):
+                    Ujq = fft_module.fft(U[j1*nfo+q1])
+                    for j2 in range(j1+1,nOctaves):
+                        for q2 in range(nfo2):
+                            # | U_lambda1 * Psi_j2 | * phi
+                            filtersj2q2 = wavelet_filters_order2['psi'][(j2,q2)][current_resolution].view()
+                            #Subsampling is only required in order 1 to set the resolution of
+                            #the signal decided by the wavelet bandpass filters
+                            x_conv = np.abs(fft_module.ifft(Ujq*filtersj2q2))
+                            x_conv_f = fft_module.fft(x_conv)
+                            ds2 = len(x_conv_f)//window_size
+                            Uj2 = ds2* fft_module.ifft(x_conv_f*lp_filter)[::ds2]
+
+                            if mod:
+                                Uj2 = np.abs(Uj2)
+                            U2_separed[j1*nfo + q1, j2*nfo2 + q2, :] = Uj2
+                            S2[indx, :] = np.abs(Uj2)
+                            indx = indx+1
+
+
+            #pdb.set_trace()
+            #S_tree[2] = S2.view()
+            S_tree[2] = U2_separed
+
+            if(display_flag):
+                plt.figure()
+                plt.imshow(S2, aspect='auto', cmap='jet')
+                plt.title('Second Order Coeffs')
+                plt.colorbar()
+
+        return S, U, S_tree
+
+
+
+
 def scattering(x,wavelet_filters=None,wavelet_filters_order2=None,M=2, nOctaves = 8,
                nfo1 = 12, nfo2 = 12, mod=True, cyclic = False):
     """Compute the scattering transform of a signal using the filter bank.
@@ -427,8 +658,8 @@ def scattering(x,wavelet_filters=None,wavelet_filters_order2=None,M=2, nOctaves 
         nfo = [nfo1, nfo2]
         quality_factor = 4 #defaults
 
-        psi_specs_order = get_wavelet_filter_specs(nfo, \
-                            quality_factor, nOctaves)
+        psi_specs_order = get_wavelet_filter_specs(nfo, quality_factor,
+                                                   nOctaves)
         psi_specs, _, _ = psi_specs_order[0]
         filters, _ = filterbank_morlet_1d(N, psi_specs, nOctaves)
         wavelet_filters = \
@@ -589,7 +820,7 @@ def scattering(x,wavelet_filters=None,wavelet_filters_order2=None,M=2, nOctaves 
                         S2[indx, :] = np.abs(Uj2)
                         indx = indx+1
 
-                        
+
         #pdb.set_trace()
         #S_tree[2] = S2.view()
         S_tree[2] = U2_separed
