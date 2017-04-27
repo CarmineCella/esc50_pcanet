@@ -1,7 +1,7 @@
 import matplotlib
 import numpy as np
 import scipy as scp
-#import pywt
+import pywt
 import fnmatch
 import matplotlib.pyplot as plt
 import os
@@ -13,14 +13,15 @@ from sklearn.model_selection import train_test_split, cross_val_score
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.decomposition import PCA
 from sklearn.metrics import confusion_matrix
-from sklearn.preprocessing import label_binarize
+from sklearn.preprocessing import label_binarize, StandardScaler
 from sklearn.pipeline import Pipeline
 
 from keras import backend as K
 from keras.engine.topology import Layer
 from keras.models import Model
 from keras.layers import Input, merge
-from keras.layers.core import Activation, Dense, Permute, Merge, Lambda, Dropout, Flatten, Reshape
+from keras.layers.core import Activation, Dense, Permute, Lambda, Dropout, Flatten, Reshape
+from keras.layers.merge import Average, Concatenate
 from keras.layers.convolutional import Convolution1D, ZeroPadding1D, Convolution2D, ZeroPadding2D
 from keras.layers.pooling import GlobalAveragePooling2D, GlobalAveragePooling1D, MaxPooling1D, MaxPooling2D
 from keras.utils.io_utils import HDF5Matrix
@@ -31,13 +32,13 @@ from transform_scatt import load_transform, Concat_scat_tree, Concat_scal, Joint
 from compute_features import compute_features, load_features, compute_features_listfiles
 from plot_utils import plot_confusion_matrix
 
-import Oscar
 
 
 import pdb
 import logging
 logging.basicConfig(filename='log.log',level=logging.DEBUG)
 logging.debug('This message should go to the log file')
+#import Oscar
 
 
 
@@ -170,7 +171,7 @@ def model_joint_scat(nOctaves, nfo, nfo2, nClasses=50, n_samples=256,
     x_list_imag = [conv(x) for (conv, x) in zip(conv_1_imag, x_list_imag)]
     #x_list_imag = [Permute((3,2,1))(x) for x in x_list_imag]
 
-    # Merge the real and imaginary parts.
+    # 42 the real and imaginary parts.
     def complex_modulus(x_real, x_imag):
         pow2 = Lambda((lambda x: x**2))
         sqrt = Lambda((lambda x: x**(1./2)))
@@ -226,7 +227,7 @@ def model_joint_scat(nOctaves, nfo, nfo2, nClasses=50, n_samples=256,
     # x_pooled_list = [pool2D(x) for x in x_list]
     # x = merge(x_pooled_list, mode='concat', concat_axis=2)
     x_list = [Flatten_4Tensor()(x) for x in x_list]
-    x = merge(x_list, mode='concat', concat_axis=2)
+    x = Concatenate(axis=2)(x_list)
 
     # Conv1
     #x = ZeroPadding1D(padding=8)(x)
@@ -260,7 +261,7 @@ def model_joint_scat(nOctaves, nfo, nfo2, nClasses=50, n_samples=256,
 
 
     #x_pooled_list.extend([pool2D(x) for x in x_list])
-    x_merged = merge(x_merged_list, mode='concat', concat_axis=1)
+    x_merged = Concatenate(axis=1)(x_merged_list)
 
     # Clasiffy
     representation = Dense(128, activation='relu')(x_merged)
@@ -310,7 +311,7 @@ def model_scat2(nOctaves, nfo, nfo2, hyperparams, nClasses=50, n_samples=256,
 
     #x_list = []
     #x_list.extend([scat0, scat1])
-    x2 = merge(x2_list, mode='concat', concat_axis=2)
+    x2 = Concatenate(axis=2)(x2_list)
 
     def convolution(x, nfilters=1, sizefilters=1, pool_length=1, subsample_length=1,
                     symetricpooling = True):
@@ -345,7 +346,7 @@ def model_scat2(nOctaves, nfo, nfo2, hyperparams, nClasses=50, n_samples=256,
     #x = ZeroPadding1D(padding=(8,7))(x)
     #x = Convolution1D(4, 16, activation='relu')(x)
     #x = MaxPooling1D(pool_length=2, stride=2)(x)
-    x = merge([x, scat1], mode='concat', concat_axis=2)
+    x = Concatenate(axis=2)([x, scat1])
     ### #x = Dropout(0.5)(x)
 
     # Conv 2
@@ -354,7 +355,7 @@ def model_scat2(nOctaves, nfo, nfo2, hyperparams, nClasses=50, n_samples=256,
     #x = ZeroPadding1D(padding=(8,7))(x)
     #x = Convolution1D(8, 16, activation='relu')(x)
     #x = MaxPooling1D(pool_length=2, stride=2)(x)
-    x = merge([x, x2], mode='concat', concat_axis=2)
+    x = Concatenate(axis=2)([x, x2])
     #x = Dropout(0.5)(x)
 
 
@@ -422,19 +423,22 @@ def model_scat2_av(nOctaves, nfo, nfo2, nClasses=50):
 
     # Merge
     x2_list = [Flatten()(x) for x in inputs_scat2]
-    x2 = merge(x2_list, mode='concat')
+    x2 = Concatenate()(x2_list)
 
-    x = merge([input_scat0, input_scat1, x2], mode='concat')
+    x = Concatenate()([input_scat0, input_scat1, x2])
 
 
 
 
 
     # Clasiffy
-    representation = Dense(512, activation='relu')(x)
-    #representation = Dropout(0.5)(representation)
-    representation = Dense(512, activation='relu')(representation)
-    #representation = Dropout(0.5)(representation)
+    #representation=x
+    representation = Dense(4096, activation='relu')(x)
+    representation = Dropout(0.5)(representation)
+    representation = Dense(4096, activation='relu')(representation)
+    representation = Dropout(0.5)(representation)
+    representation = Dense(4096, activation='relu')(representation)
+    representation = Dropout(0.5)(representation)
     representation = Dense(nClasses)(representation)
     output = Activation("softmax")(representation)
 
@@ -630,13 +634,79 @@ class generator_scat_h5(object):
         return (out, y_binarized)
 
 
+def _normalizer_mean(self, X):
+    log_eps = 0.0001
+    return np.mean(np.log(log_eps+np.abs(X)), axis=-1)
+
+def load_h5(h5location, nOctaves, nclasses=50, log_eps=0.0001):
+    h5file = h5py.File(h5location, "r")
+    scat0 = h5file['scat0']
+    scat1 = h5file['scat1']
+    scat2 = h5file['scat2']
+    y = np.array(h5file['labels'])
+
+    X0 = np.array(scat0)
+    X0 = np.log(log_eps + X0[:,0])
+
+    #X0 = self.normalizer_mean(X0)
+    X1 = np.array(scat1)
+    X1 = np.log(log_eps + X1[:,:,0])
+    #X1 = self.normalizer_mean(X1)
+
+    #First version
+    X2 = np.array(scat2)
+    #X2_list_real = [X2[:,:j2*nfo,j2*nfo2:(j2+1)*nfo2,:].real for j2 in range(1, self.nOctaves)]
+    #X2_list_imag = [X2[:,:j2*nfo,j2*nfo2:(j2+1)*nfo2,:].real for j2 in range(1, self.nOctaves)]
+    X2 = np.log(log_eps + np.abs(X2[:,:,:,0]))
+    X2_list = [X2[:,:j2*nfo,j2*nfo2:(j2+1)*nfo2] for j2 in range(1, nOctaves)]
+    out = [X0, X1]
+    #out.extend(X2_list_real)
+    #out.extend(X2_list_imag)
+    out.extend(X2_list)
+    pdb.set_trace()
+
+
+    #y_binarized = label_binarize(y, np.arange(nclasses))
+
+    return out, y
+    #return (out, y)
+
+def flatten_concat(l):
+    n = l[0].shape[0]
+    l = [x if x.ndim > 1 else x[:,np.newaxis] for x in l]
+    return np.hstack([u.reshape((n,-1)) for u in l])
+
+def joint_scat(X):
+    eps = 0.0001
+    scat2 = X[2:]
+    wavelet = pywt.Wavelet('db2')
+
+    jointcoeff = []
+    for x in X[2:]:
+        wdec = pywt.wavedec(x, wavelet, axis=1)
+        wdec = [np.log(eps+np.abs(c)) for c in wdec]
+        #wdec = [np.reshape(c, (x.shape[0], -1)) for c in wdec]
+        #wdec = np.concatenate(wdec, axis=1)
+        jointcoeff.extend(wdec)
+
+    coeffs = [X[0], X[1]]
+    coeffs.extend(jointcoeff)
+
+    # jointcoeff = np.concatenate(jointcoeff, axis=1)
+    # #pdb.set_trace()
+    # scat1 = X[1].reshape((X[1].shape[0],-1))
+    # Xout = np.hstack([X[0][:,np.newaxis], X[1], jointcoeff])
+    return flatten_concat(coeffs)
+
 
 if __name__ == "__main__":
-    params = {'channels': (84,12), 'hops': (512,4),
-              'fmin':32.7, 'fmax':11001,
-              'alphas':(6,6),'Qs':(12,12), # only used for flex scattering
-              'nclasses': 50, 'n_itemsbyclass':40, 'max_sample_size':2**17,
-              'audio_ext':'*.ogg'}
+    load_generator = False
+
+    # params = {'channels': (84,12), 'hops': (512,4),
+    #           'fmin':32.7, 'fmax':11001,
+    #           'alphas':(6,6),'Qs':(12,12), # only used for flex scattering
+    #           'nclasses': 50, 'n_itemsbyclass':40, 'max_sample_size':2**17,
+    #           'audio_ext':'*.ogg'}
 
     nOctaves=16
     nfo=12
@@ -646,12 +716,8 @@ if __name__ == "__main__":
     #directory = "/users/data/blier/features_esc50/scat_10_12_12/"
     #X, y = load_features(directory, params['nclasses'], params['n_itemsbyclass'])
 
-
-
-
-
-
     #h5file = h5py.File(h5location, "r")
+
     h5location = "features_esc50/scat_18_12_4.h5"
     #X0 = HDF5Matrix(h5location, 'scat0', normalizer=normalizer_mean)
     #X1 = HDF5Matrix(h5location, 'scat1', normalizer=normalizer_mean)
@@ -672,98 +738,105 @@ if __name__ == "__main__":
 
 
     #model.load_weights("weights_models/model1.npy")
-    test_size = 0.2
-    samples_train = int((1-test_size)*2000)
-    samples_test = int(test_size*2000)
-    gen_train, gen_test = get_train_test_generator_h5(h5location,
-                                                   test_size=test_size,
-                                                   batch_size=16,
-                                                   nOctaves=nOctaves,
-                                                   dataaugmentation=False)
-    #gen_train, gen_test = \
-    #    get_train_test_generator_scat("/users/data/blier/ESC-50", test_size=0.20,
-    #                                  nsamples=2000, batch_size=1, nOctaves=nOctaves,
-    #                                  nfo1=nfo, nfo2=nfo2)
-    #y_binarized = label_binarize(y, np.arange(params['nclasses']))
-    #model.fit(inputs, Y, nb_epoch=500, batch_size=32, validation_split=0.20)
-    samples_train = 16000
-    samples_test = 800
+    if load_generator:
+        test_size = 0.2
+        samples_train = int((1-test_size)*2000)
+        samples_test = int(test_size*2000)
+        gen_train, gen_test = get_train_test_generator_h5(h5location,
+                                                       test_size=test_size,
+                                                       batch_size=16,
+                                                       nOctaves=nOctaves,
+                                                       dataaugmentation=False)
+        #gen_train, gen_test = \
+        #    get_train_test_generator_scat("/users/data/blier/ESC-50", test_size=0.20,
+        #                                  nsamples=2000, batch_size=1, nOctaves=nOctaves,
+        #                                  nfo1=nfo, nfo2=nfo2)
+        #y_binarized = label_binarize(y, np.arange(params['nclasses']))
+        #model.fit(inputs, Y, nb_epoch=500, batch_size=32, validation_split=0.20)
+        samples_train = 16000
+        samples_test = 800
+
+    else:
+        test_size = 400
+        X, y = load_h5(h5location, nOctaves)
+        indexes = np.arange(y.shape[0])
+
+        X_trans = flatten_concat(X)
+        normalizer = StandardScaler()
+        X_trans = normalizer.fit_transform(X_trans)
+
+        # idx_train, idx_test, y_train, y_test = \
+        #     train_test_split(indexes, y, test_size=test_size,
+        #                      random_state=42, stratify=y)
+        X_train, X_test, y_train, y_test = \
+            train_test_split(X_trans, y, test_size=test_size,
+                             random_state=44, stratify=y)
+
+        #
+        y_binarized = label_binarize(y, np.arange(50))
+        y_binarized_train = label_binarize(y_train, np.arange(50))
+        y_binarized_test  = label_binarize(y_test,  np.arange(50))
+
+        # y_binarized_train = y_binarized[idx_train]
+        # y_binarized_test  = y_binarized[idx_test]
+        # X_train = [x[idx_train] for x in X]
+        # X_test =  [x[idx_test]  for x in X]
+        # Xtrans_train = joint_scat(X_train)
+        # Xtrans_test  = joint_scat(X_test)
+        #Xtrans_train = flatten_concat(X_train)
+        #Xtrans_test = flatten_concat(X_test)
 
 
+    ###########
+    # # #To test with the SVM
+    # #X_flat = np.vstack([Xtrans_train, Xtrans_test])
+    # #y_flat = np.concatenate([y_train, y_test])
+    # classifier = SVC(C=1., kernel='linear')
+    # scores = cross_val_score(classifier, X_trans, y, cv=15)
+    # print("--------------------")
+    # print("--------------------")
+    #
+    # print(scores, scores.mean())
+    # print("--------------------")
+    # print("--------------------")
 
-    hyperparams = {
-        # Conv1
-        "conv1_nfilters": {"min":1,"max":4,"step":1},
-        "conv1_sizefilters": {"min":2,"max":5,"step":1},
-        #Conv2
-        "conv2_nfilters": {"min":2,"max":5,"step":1},
-        "conv2_sizefilters": {"min":2,"max":5,"step":1},
-        #Conv3
-        "conv3_nfilters": {"min":4,"max":8,"step":1},
-        "conv3_sizefilters": {"min":2,"max":5,"step":1},
-        "conv3_pool_length": {"min":0,"max":8,"step":2},
-        #"conv3_stride": {"min":1,"max":8,"step":1},
-        #Conv4
-        "conv4_nfilters": {"min":5,"max":9,"step":1},
-        "conv4_sizefilters": {"min":2,"max":5,"step":1},
-        "conv4_pool_length": {"min":0,"max":8,"step":2},
-        #"conv4_stride": {"min":1,"max":8,"step":1},
-        #Conv5
-        "conv5_nfilters": {"min":6,"max":10,"step":1},
-        "conv5_sizefilters": {"min":2,"max":5,"step":1},
-        "conv5_pool_length": {"min":0,"max":8,"step":2},
-        #"conv4_stride": {"min":1,"max":8,"step":1},
-        #Dense
-        "dense1": {"min":7,"max":11,"step":1},
-        "dense2": {"min":7,"max":11,"step":1},
-        "dropout": {"min":0.1,"max":0.7,"step":0.1}
-    }
 
-    myhyperparams = {
-        # Conv1
-        "conv1_nfilters": 3,
-        "conv1_sizefilters": 4,
-        #Conv2
-        "conv2_nfilters": 4,
-        "conv2_sizefilters": 4,
-        #Conv3
-        "conv3_nfilters": 5,
-        "conv3_sizefilters": 3,
-        "conv3_pool_length": 8,
-        #Conv4
-        "conv4_nfilters": 6,
-        "conv4_sizefilters": 3,
-        "conv4_pool_length": 8,
-        #"conv4_stride": {"min":1,"max":8,"step":1},
-        #Conv5
-        "conv5_nfilters": 7,
-        "conv5_sizefilters": 3,
-        "conv5_pool_length": 4,
-        #"conv4_stride": {"min":1,"max":8,"step":1},
-        #Dense
-        "dense1": 10,
-        "dense2": 8,
-        "dropout": 0.5
-    }
+    #model = model_scat2_av(nOctaves, nfo, nfo2)
+    input_model = Input(shape=(X_trans.shape[1],))
+    x = input_model
+    x = Dense(2048, activation='relu')(x)
+    x = Dropout(0.6)(x)
+    x = Dense(2048, activation='relu')(x)
+    x = Dropout(0.6)(x)
+    x = Dense(2048, activation='relu')(x)
+    x = Dropout(0.6)(x)
+    x = Dense(2048, activation='relu')(x)
+    x = Dropout(0.6)(x)
+    x = Dense(50)(x)
+    output = Activation("softmax")(x)
 
-    #oscar = Oscar.Oscar.Oscar('JTaYCyqlfnyWfl8zZ6vLgodwQ1an0k1eUTXII5msag9zfnNlbnNvdXQtb3NjYXJyEQsSBFVzZXIYgICAgN7-mAoM')
-    #experiment = {'name':'esc50_scat2_4', 'parameters':hyperparams}
-    #while True:
-    #    try:
-            #job = oscar.suggest(experiment)
-    model = model_scat2_av(nOctaves, nfo, nfo2)
 
-    optimizer = Adam()
+    model = Model(input=input_model, output=output)
+
+    optimizer = Adam(lr=0.0001)
     #optimizer = "rmsprop"
     model.compile(optimizer=optimizer, metrics=['categorical_accuracy'],
                   loss='categorical_crossentropy')
-    print(model.summary())
-    history = model.fit_generator(gen_train, samples_per_epoch=samples_train, nb_epoch=20,
-                        validation_data=gen_test, nb_val_samples=samples_test,
-                        max_q_size=10, nb_worker=3)
-    trainloss, trainacc = history.history["loss"][-1], history.history["categorical_accuracy"][-1]
-    testloss, testacc = model.evaluate_generator(gen_test, samples_test,
-                                                 max_q_size=10, nb_worker=3)
+    model.summary()
+
+    if load_generator:
+        model.fit_generator(gen_train, samples_per_epoch=samples_train, nb_epoch=20,
+                            validation_data=gen_test, nb_val_samples=samples_test,
+                            max_q_size=10, nb_worker=3)
+    #trainloss, trainacc = history.history["loss"][-1], history.history["categorical_accuracy"][-1]
+
+    else:
+
+
+
+
+        model.fit(X_train, y_binarized_train, batch_size=32, epochs=400,
+                  validation_data=(X_test, y_binarized_test))
     #        oscar_results = {"loss":testloss, "accuracy":testacc,
     #                         "train_loss":trainloss, "train_acc":trainacc}
     #        oscar.update(job,oscar_results)
